@@ -81,7 +81,7 @@ td.desc{white-space:normal;min-width:260px;max-width:420px}
   <header>
     <span class="eyebrow">IP · Multas de trânsito</span>
     <h1>Tratamento de Multas IP</h1>
-    <p class="lead">Envie a base de multas (frotas leves e pesadas) e a planilha ATIVOS. A ferramenta acha a gerência de cada condutor, classifica as infrações que contam no IP e devolve a aba <b>Base Multas</b> pronta, junto com o <b>Indicador IP</b> (previsto 0 × realizado).</p>
+    <p class="lead">Envie a base de multas (frotas leves e pesadas) e a planilha ATIVOS. A ferramenta acha a gerência de cada condutor, classifica as infrações que contam no IP e devolve a <b>Base Multas</b> pronta, com a coluna <b>IP</b> (SIM/NÃO) dizendo se a multa vai para o IP.</p>
   </header>
 
   <section class="inputs" aria-label="Arquivos">
@@ -111,7 +111,7 @@ td.desc{white-space:normal;min-width:260px;max-width:420px}
     <div class="chips" id="chips"></div>
     <ul class="notes" id="notes"></ul>
     <div class="toolbar">
-      <label><input type="checkbox" id="soAval"> Só infrações que contam no IP</label>
+      <label><input type="checkbox" id="soAval"> Só IP = SIM</label>
       <input type="search" id="busca" placeholder="Buscar nome, gerência ou AIT" aria-label="Buscar">
     </div>
     <div class="tablebox"><table><thead><tr id="thead"></tr></thead><tbody id="tbody"></tbody></table></div>
@@ -125,7 +125,7 @@ td.desc{white-space:normal;min-width:260px;max-width:420px}
       <div><dt>Mês</dt><dd>Mês da Data Rec Notificação.</dd></div>
       <div><dt>Tipo de Infração</dt><dd>Excesso de Velocidade, Uso de Celular, Ultrapassagem Proibida, Sem Cinto de Segurança ou Faróis Apagados em Pista Simples. O resto fica "Não avaliada".</dd></div>
       <div><dt>Responsabilidade</dt><dd>Só conta multa com Infrator = Condutor. Infração do proprietário (ex.: lâmpada queimada) não entra.</dd></div>
-      <div><dt>Indicador IP</dt><dd>Uma linha por gerência e mês: Previsto 0, Realizado = nº de multas avaliadas.</dd></div>
+      <div><dt>IP</dt><dd>SIM quando a infração é uma das cinco acima e de responsabilidade do condutor; NÃO para as demais.</dd></div>
       <div><dt>Duplicados</dt><dd>AIT repetido conta uma vez só.</dd></div>
     </dl>
     <p class="rule">Os arquivos são lidos só no seu navegador; nada é enviado para fora.</p>
@@ -285,7 +285,7 @@ var MultasLogic = (function () {
       out.push({
         'Gerência': ger, 'Nome': nome ? nome.toUpperCase() : 'CONDUTOR NÃO IDENTIFICADO',
         'Mês': dt ? new Date(dt.getFullYear(), dt.getMonth(), 1) : null,
-        'Tipo de Infração': avaliada, 'Data Rec Notificação': dt, 'Descrição da Infração': desc,
+        'Tipo de Infração': avaliada, 'IP': avaliada === 'Não avaliada' ? 'NÃO' : 'SIM', 'Data Rec Notificação': dt, 'Descrição da Infração': desc,
         'Infrator': infr ? infr.charAt(0).toUpperCase() + infr.slice(1).toLowerCase() : '',
         'Gravidade': pick(r, 'Gravidade') || '', 'Unidade': pick(r, 'Unidade') || '', 'AIT': ait,
         'Origem da Gerência': origem, 'Nome no ATIVOS': m ? m.nome : ''
@@ -317,22 +317,16 @@ var MultasLogic = (function () {
   }
 
   function gerarXlsx(XLSX, res) {
-    var cols = ['Gerência', 'Nome', 'Mês', 'Tipo de Infração', 'Data Rec Notificação', 'Descrição da Infração', 'Infrator', 'Gravidade', 'Unidade', 'AIT', 'Origem da Gerência', 'Nome no ATIVOS'];
+    var cols = ['Gerência', 'Nome', 'Mês', 'Tipo de Infração', 'IP', 'Data Rec Notificação', 'Descrição da Infração', 'Infrator', 'Gravidade', 'Unidade', 'AIT', 'Origem da Gerência', 'Nome no ATIVOS'];
     var wb = XLSX.utils.book_new();
     var ws = XLSX.utils.json_to_sheet(res.linhas, { header: cols, cellDates: true });
     var rng = XLSX.utils.decode_range(ws['!ref']);
     for (var R = 1; R <= rng.e.r; R++) {
-      [[2, 'mmm/yyyy'], [4, 'dd/mm/yyyy']].forEach(function (p) { var c = ws[XLSX.utils.encode_cell({ r: R, c: p[0] })]; if (c && c.t === 'd') c.z = p[1]; });
+      [[2, 'mmm/yyyy'], [5, 'dd/mm/yyyy']].forEach(function (p) { var c = ws[XLSX.utils.encode_cell({ r: R, c: p[0] })]; if (c && c.t === 'd') c.z = p[1]; });
     }
-    ws['!cols'] = [34, 36, 11, 32, 13, 60, 12, 13, 9, 13, 28, 36].map(function (w) { return { wch: w }; });
+    ws['!cols'] = [34, 36, 11, 32, 6, 13, 60, 12, 13, 9, 13, 28, 36].map(function (w) { return { wch: w }; });
     ws['!autofilter'] = { ref: ws['!ref'] };
     XLSX.utils.book_append_sheet(wb, ws, 'Base Multas');
-    var ind = indicador(res);
-    var wi = XLSX.utils.json_to_sheet(ind, { header: ['Gerência', 'Mês', 'Indicador', 'Previsto', 'Realizado'], cellDates: true });
-    if (ind.length) { var ri = XLSX.utils.decode_range(wi['!ref']); for (var R2 = 1; R2 <= ri.e.r; R2++) { var c2 = wi[XLSX.utils.encode_cell({ r: R2, c: 1 })]; if (c2) c2.z = 'mmm/yyyy'; } }
-    wi['!cols'] = [44, 12, 28, 10, 10].map(function (w) { return { wch: w }; });
-    wi['!autofilter'] = { ref: wi['!ref'] };
-    XLSX.utils.book_append_sheet(wb, wi, 'Indicador IP');
     return XLSX.write(wb, { bookType: 'xlsx', type: 'array', cellDates: true });
   }
 
@@ -343,7 +337,7 @@ if (typeof module !== 'undefined') module.exports = MultasLogic;
 (function(){
   var $=function(id){return document.getElementById(id)};
   var wbs={multas:null,ativos:null}, res=null, xbuf=null;
-  var COLS=['Gerência','Nome','Mês','Tipo de Infração','Data Rec Notificação','Descrição da Infração','Infrator','Unidade','AIT','Origem da Gerência','Nome no ATIVOS'];
+  var COLS=['Gerência','Nome','Mês','Tipo de Infração','IP','Data Rec Notificação','Descrição da Infração','Infrator','Unidade','AIT','Origem da Gerência','Nome no ATIVOS'];
   function fmtM(d){return d?d.toLocaleDateString('pt-BR',{month:'short',year:'numeric'}).replace(' de ','/').replace('.',''):''}
   function fmtD(d){return d?d.toLocaleDateString('pt-BR'):''}
   function setStatus(t,err){var s=$('status');s.textContent=t;s.className='status'+(err?' err':'')}
@@ -398,7 +392,7 @@ if (typeof module !== 'undefined') module.exports = MultasLogic;
     var org={}; L.forEach(function(l){org[l['Origem da Gerência']]=(org[l['Origem da Gerência']]||0)+1});
     var ger={}; av.forEach(function(l){ger[l['Gerência']]=1});
     $('kpis').innerHTML='';
-    [[av.length,'multas contam no IP',1],[L.length,'multas na base'],[Object.keys(ger).length,'gerências com multa no IP'],[(org['Nome do condutor (aproximado)']||0),'nomes por aproximação (conferir)']].forEach(function(k){
+    [[av.length,'multas com IP = SIM',1],[L.length,'multas na base'],[Object.keys(ger).length,'gerências com multa no IP'],[(org['Nome do condutor (aproximado)']||0),'nomes por aproximação (conferir)']].forEach(function(k){
       var d=document.createElement('div');d.className='kpi'+(k[2]?' main':'');d.innerHTML='<b></b><span></span>';d.children[0].textContent=k[0].toLocaleString('pt-BR');d.children[1].textContent=k[1];$('kpis').appendChild(d);
     });
     $('chips').innerHTML='';
@@ -425,6 +419,7 @@ if (typeof module !== 'undefined') module.exports = MultasLogic;
         var td=document.createElement('td'), v=l[c];
         if(c==='Mês')v=fmtM(v); else if(c==='Data Rec Notificação')v=fmtD(v);
         if(c==='Tipo de Infração'){var s=document.createElement('span');s.className='tag '+(v==='Não avaliada'?'na':'av');s.textContent=v;td.appendChild(s)}
+        else if(c==='IP'){var s3=document.createElement('span');s3.className='tag '+(v==='SIM'?'av':'na');s3.textContent=v;td.appendChild(s3)}
         else if(c==='Origem da Gerência'&&v!=='Nome do condutor (exato)'){var s2=document.createElement('span');s2.className='tag ap';s2.textContent=v;td.appendChild(s2)}
         else td.textContent=v==null?'':v;
         if(c==='Descrição da Infração')td.className='desc';
