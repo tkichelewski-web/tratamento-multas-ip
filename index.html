@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tratamento de Multas IP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@600;700&family=Source+Sans+3:wght@400;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: ferramenta de uma coluna — entrada (2 arquivos) → resumo → prévia da base; paleta oficial Santa Adélia */
+:root{
+  --bg:#F5F8F4; --surface:#FFFFFF; --ink:#16231D; --muted:#5B6B62; --line:#D9E3DC;
+  --brand:#07583C; --brand-ink:#FFFFFF; --lime:#B3DD64; --amber:#FDB952; --red:#DF4636;
+  --lime-soft:#EEF7DC; --red-soft:#FBE3E0; --amber-soft:#FFF1D9;
+  --f-display:"Barlow Semi Condensed","Arial Narrow",Arial,sans-serif;
+  --f-body:"Source Sans 3","Segoe UI",Arial,sans-serif;
+  --f-data:"IBM Plex Mono",Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0F1A15; --surface:#16241D; --ink:#E6EFE9; --muted:#9DB0A5; --line:#2A3B32;
+  --brand:#2E9A6E; --brand-ink:#FFFFFF; --lime-soft:#26351A; --red-soft:#3A1F1C; --amber-soft:#3A2F1A; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0F1A15; --surface:#16241D; --ink:#E6EFE9; --muted:#9DB0A5; --line:#2A3B32;
+  --brand:#2E9A6E; --brand-ink:#FFFFFF; --lime-soft:#26351A; --red-soft:#3A1F1C; --amber-soft:#3A2F1A; color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font:16px/1.5 var(--f-body)}
+.wrap{max-width:1080px;margin:0 auto;padding-inline:16px;padding-block:28px 56px;display:grid;gap:24px}
+header{display:grid;gap:6px}
+.eyebrow{font:600 12px/1 var(--f-body);letter-spacing:.12em;text-transform:uppercase;color:var(--brand)}
+h1{font:700 clamp(28px,5vw,40px)/1.05 var(--f-display);margin:0;text-wrap:balance}
+h2{font:700 20px/1.2 var(--f-display);margin:0}
+.lead{color:var(--muted);margin:0;max-width:66ch}
+.inputs{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.drop{position:relative;display:grid;gap:6px;padding:18px;border:2px dashed var(--line);border-radius:10px;background:var(--surface);cursor:pointer;transition:border-color .15s,background .15s;min-width:0}
+.drop:hover,.drop.over{border-color:var(--brand)}
+.drop:focus-within{outline:3px solid var(--lime);outline-offset:2px}
+.drop.ok{border-style:solid;border-color:var(--brand);background:var(--lime-soft)}
+.drop input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.drop .t{font:700 17px/1.2 var(--f-display)}
+.drop .s{color:var(--muted);font-size:14px}
+.drop .f{font:500 13px/1.3 var(--f-data);color:var(--brand);overflow-wrap:anywhere}
+.actions{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+button{font:600 16px/1 var(--f-body);border-radius:8px;padding:12px 18px;border:1px solid var(--brand);cursor:pointer}
+button.primary{background:var(--brand);color:var(--brand-ink)}
+button.ghost{background:transparent;color:var(--brand)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button:focus-visible{outline:3px solid var(--lime);outline-offset:2px}
+.status{color:var(--muted);font-size:15px}
+.status.err{color:var(--red);font-weight:600}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:20px;display:grid;gap:16px;min-width:0}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.kpi{border-left:4px solid var(--line);padding:4px 12px;display:grid;gap:2px}
+.kpi.main{border-color:var(--red)}
+.kpi b{font:700 30px/1 var(--f-display);font-variant-numeric:tabular-nums}
+.kpi span{color:var(--muted);font-size:14px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{display:inline-flex;gap:8px;align-items:center;border:1px solid var(--line);border-radius:999px;padding:4px 12px;font-size:14px}
+.chip b{font-variant-numeric:tabular-nums}
+.chip.on{background:var(--red-soft);border-color:transparent}
+.notes{margin:0;padding-left:18px;color:var(--ink);font-size:14px;display:grid;gap:4px}
+.notes li::marker{color:var(--amber)}
+.tablebox{overflow-x:auto;border:1px solid var(--line);border-radius:8px;max-height:520px}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th{position:sticky;top:0;background:var(--brand);color:var(--brand-ink);text-align:left;font-weight:600;padding:8px 10px;white-space:nowrap}
+td{padding:7px 10px;border-top:1px solid var(--line);white-space:nowrap;vertical-align:top}
+td.d{font-family:var(--f-data);font-size:13px}
+td.desc{white-space:normal;min-width:260px;max-width:420px}
+.tag{display:inline-block;border-radius:4px;padding:1px 8px;font-size:13px;font-weight:600}
+.tag.av{background:var(--red-soft);color:var(--red)}
+.tag.na{color:var(--muted)}
+.tag.ap{background:var(--amber-soft)}
+.toolbar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+.toolbar label{display:flex;gap:8px;align-items:center;font-size:15px;cursor:pointer}
+.toolbar input[type=search]{font:15px var(--f-body);padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);min-width:0;width:240px;max-width:100%}
+.spec{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px 24px;margin:0}
+.spec div{display:grid;gap:2px}
+.spec dt{font-weight:600}
+.spec dd{margin:0;color:var(--muted);font-size:14px}
+.rule{font-size:14px;color:var(--muted)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+<style>*{box-sizing:border-box}body{margin:0}[hidden]{display:none!important}</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script></head><body>
+<div class="wrap">
+  <header>
+    <span class="eyebrow">IP · Multas de trânsito</span>
+    <h1>Tratamento de Multas IP</h1>
+    <p class="lead">Envie a base de multas (frotas leves e pesadas) e a planilha ATIVOS. A ferramenta acha a gerência de cada condutor, classifica as infrações que contam no IP e devolve a aba <b>Base Multas</b> pronta, junto com o <b>Indicador IP</b> (previsto 0 × realizado).</p>
+  </header>
+
+  <section class="inputs" aria-label="Arquivos">
+    <label class="drop" id="dropMultas">
+      <input type="file" id="fileMultas" accept=".xlsx,.xlsm,.xls">
+      <span class="t">1. Base de multas</span>
+      <span class="s">Planilha com a aba BD (e COLABORADORES SENIOR)</span>
+      <span class="f" id="nameMultas">Clique ou arraste o arquivo aqui</span>
+    </label>
+    <label class="drop" id="dropAtivos">
+      <input type="file" id="fileAtivos" accept=".xlsx,.xlsm,.xls">
+      <span class="t">2. ATIVOS</span>
+      <span class="s">Colunas NOME, MATRICULA e GERENCIA</span>
+      <span class="f" id="nameAtivos">Clique ou arraste o arquivo aqui</span>
+    </label>
+  </section>
+
+  <div class="actions">
+    <button class="primary" id="btnGerar" disabled>Gerar base</button>
+    <button class="ghost" id="btnBaixar" hidden>Baixar Base_Multas_IP.xlsx</button>
+    <span class="status" id="status" role="status">Selecione os dois arquivos.</span>
+  </div>
+
+  <section class="panel" id="resultado" hidden>
+    <h2>Resumo</h2>
+    <div class="kpis" id="kpis"></div>
+    <div class="chips" id="chips"></div>
+    <ul class="notes" id="notes"></ul>
+    <div class="toolbar">
+      <label><input type="checkbox" id="soAval"> Só infrações que contam no IP</label>
+      <input type="search" id="busca" placeholder="Buscar nome, gerência ou AIT" aria-label="Buscar">
+    </div>
+    <div class="tablebox"><table><thead><tr id="thead"></tr></thead><tbody id="tbody"></tbody></table></div>
+    <span class="rule" id="rodape"></span>
+  </section>
+
+  <section class="panel" id="regras">
+    <h2>Como a base é montada</h2>
+    <dl class="spec">
+      <div><dt>Gerência</dt><dd>Do ATIVOS pelo nome do condutor (exato ou nome parecido/cortado). Sem condutor, usa a gerência do gestor aprovador da multa.</dd></div>
+      <div><dt>Mês</dt><dd>Mês da Data Rec Notificação.</dd></div>
+      <div><dt>Tipo de Infração</dt><dd>Excesso de Velocidade, Uso de Celular, Ultrapassagem Proibida, Sem Cinto de Segurança ou Faróis Apagados em Pista Simples. O resto fica "Não avaliada".</dd></div>
+      <div><dt>Responsabilidade</dt><dd>Só conta multa com Infrator = Condutor. Infração do proprietário (ex.: lâmpada queimada) não entra.</dd></div>
+      <div><dt>Indicador IP</dt><dd>Uma linha por gerência e mês: Previsto 0, Realizado = nº de multas avaliadas.</dd></div>
+      <div><dt>Duplicados</dt><dd>AIT repetido conta uma vez só.</dd></div>
+    </dl>
+    <p class="rule">Os arquivos são lidos só no seu navegador; nada é enviado para fora.</p>
+  </section>
+</div>
+<script>
+// ===== Lógica de tratamento da base de multas (pura, sem DOM) =====
+var MultasLogic = (function () {
+  function norm(s) {
+    if (s === null || s === undefined) return '';
+    return String(s).normalize('NFKD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
+  }
+  function lcsRatio(a, b) {
+    var n = a.length, m = b.length; if (!n || !m) return 0;
+    var prev = new Uint16Array(m + 1), cur = new Uint16Array(m + 1);
+    for (var i = 1; i <= n; i++) {
+      for (var j = 1; j <= m; j++) cur[j] = a[i - 1] === b[j - 1] ? prev[j - 1] + 1 : (prev[j] > cur[j - 1] ? prev[j] : cur[j - 1]);
+      var t = prev; prev = cur; cur = t; cur.fill(0);
+    }
+    return 2 * prev[m] / (n + m);
+  }
+  function findHeaderRow(rows, must) {
+    for (var i = 0; i < Math.min(rows.length, 15); i++) {
+      var r = (rows[i] || []).map(norm);
+      if (must.every(function (k) { return r.indexOf(norm(k)) >= 0; })) return i;
+    }
+    return -1;
+  }
+  function toObjects(rows, h) {
+    var head = rows[h].map(function (x) { return x === null || x === undefined ? '' : String(x).trim(); });
+    var out = [];
+    for (var i = h + 1; i < rows.length; i++) {
+      var r = rows[i] || [], o = {}, any = false;
+      head.forEach(function (k, j) { if (k && !(k in o)) { o[k] = r[j]; if (r[j] !== null && r[j] !== undefined && r[j] !== '') any = true; } });
+      if (any) out.push(o);
+    }
+    return out;
+  }
+  function pick(o, name) {
+    var k = norm(name);
+    for (var key in o) if (norm(key) === k) return o[key];
+    return undefined;
+  }
+  function toDate(v) {
+    if (v instanceof Date) return isNaN(v) ? null : v;
+    if (typeof v === 'number') { var d = new Date(Math.round((v - 25569) * 86400000)); return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()); }
+    if (typeof v === 'string') {
+      var m = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); if (m) return new Date(+m[3], +m[2] - 1, +m[1]);
+      var d2 = new Date(v); return isNaN(d2) ? null : d2;
+    }
+    return null;
+  }
+  var AVAL = ['Excesso de Velocidade', 'Uso de Celular', 'Ultrapassagem Proibida', 'Sem Cinto de Segurança', 'Faróis Apagados em Pista Simples'];
+  function tipo(desc) {
+    var d = norm(desc);
+    if (d.indexOf('VELOCIDADE SUPERIOR') >= 0) return 'Excesso de Velocidade';
+    if (d.indexOf('CELULAR') >= 0 || d.indexOf('TELEFONE') >= 0) return 'Uso de Celular';
+    if (d.indexOf('ULTRAPASS') >= 0) return 'Ultrapassagem Proibida';
+    if (d.indexOf('CINTO') >= 0) return 'Sem Cinto de Segurança';
+    if (d.indexOf('FAROL BAIXO') >= 0 || d.indexOf('LUZ BAIXA') >= 0) return 'Faróis Apagados em Pista Simples';
+    return null;
+  }
+
+  // wbMultas / wbAtivos: workbooks do SheetJS
+  function processar(XLSX, wbMultas, wbAtivos) {
+    var avisos = [];
+    // --- ATIVOS
+    var shA = wbAtivos.Sheets[wbAtivos.SheetNames[0]];
+    var rA = XLSX.utils.sheet_to_json(shA, { header: 1, defval: null, raw: true });
+    var hA = findHeaderRow(rA, ['NOME', 'GERENCIA']);
+    if (hA < 0) throw new Error('Na planilha de ATIVOS não encontrei as colunas NOME e GERENCIA. Confira se é o arquivo certo.');
+    var ativos = toObjects(rA, hA);
+    var byName = {}, byMat = {};
+    ativos.forEach(function (a) {
+      var k = norm(pick(a, 'NOME')); var g = pick(a, 'GERENCIA'); g = g ? String(g).trim() : '';
+      if (k && !(k in byName)) byName[k] = { nome: String(pick(a, 'NOME')).trim(), ger: g };
+      var mt = pick(a, 'MATRICULA'); if (mt !== null && mt !== undefined) byMat[String(mt).trim()] = g;
+    });
+    var keys = Object.keys(byName);
+    var cache = {};
+    function find(name) {
+      var k = norm(name); if (!k) return null;
+      if (k in cache) return cache[k];
+      var res = null;
+      if (byName[k]) res = { k: k, tipo: 'exato' };
+      else {
+        var pre = keys.filter(function (x) { return x.indexOf(k) === 0 || k.indexOf(x) === 0; });
+        if (pre.length === 1) res = { k: pre[0], tipo: 'aprox' };
+        else {
+          var best = 0, bk = null;
+          keys.forEach(function (x) {
+            if (2 * Math.min(x.length, k.length) / (x.length + k.length) < 0.9) return;
+            var r = lcsRatio(k, x); if (r > best) { best = r; bk = x; }
+          });
+          if (best >= 0.9) res = { k: bk, tipo: 'aprox' };
+        }
+      }
+      if (res) { res.ger = byName[res.k].ger; res.nome = byName[res.k].nome; }
+      cache[k] = res; return res;
+    }
+
+    // --- BD de multas
+    var bdName = wbMultas.SheetNames.filter(function (n) { return norm(n) === 'BD'; })[0];
+    if (!bdName) {
+      bdName = wbMultas.SheetNames.filter(function (n) {
+        var rr = XLSX.utils.sheet_to_json(wbMultas.Sheets[n], { header: 1, defval: null, raw: true, sheetRows: 15 });
+        return findHeaderRow(rr, ['AIT', 'Nome condutor']) >= 0;
+      })[0];
+    }
+    if (!bdName) throw new Error('Na base de multas não encontrei a aba BD (com as colunas AIT e Nome condutor).');
+    var rB = XLSX.utils.sheet_to_json(wbMultas.Sheets[bdName], { header: 1, defval: null, raw: true });
+    var hB = findHeaderRow(rB, ['AIT', 'Nome condutor', 'Data Rec Notificação']);
+    if (hB < 0) throw new Error('A aba ' + bdName + ' não tem as colunas AIT, Nome condutor e Data Rec Notificação.');
+    var bd = toObjects(rB, hB).filter(function (r) { var a = pick(r, 'AIT'); return a !== null && a !== undefined && String(a).trim() !== ''; });
+
+    // --- Gestor -> gerência (aba COLABORADORES SENIOR, se existir)
+    var gmap = {}, smap = {};
+    var senName = wbMultas.SheetNames.filter(function (n) { return norm(n).indexOf('COLABORADORES') >= 0; })[0];
+    if (senName) {
+      var rS = XLSX.utils.sheet_to_json(wbMultas.Sheets[senName], { header: 1, defval: null, raw: true });
+      var hS = findHeaderRow(rS, ['Matrícula', 'Nome Gerência']);
+      if (hS >= 0) {
+        var cg = {}, cs = {};
+        toObjects(rS, hS).forEach(function (s) {
+          var g = byMat[String(pick(s, 'Matrícula')).trim()]; if (!g) return;
+          [[cg, pick(s, 'Nome Gerência')], [cs, pick(s, 'Nome Supervisor')]].forEach(function (p) {
+            var k = norm(p[1]); if (!k) return; p[0][k] = p[0][k] || {}; p[0][k][g] = (p[0][k][g] || 0) + 1;
+          });
+        });
+        [[cg, gmap], [cs, smap]].forEach(function (p) {
+          for (var k in p[0]) { var best = null, bn = -1; for (var g in p[0][k]) if (p[0][k][g] > bn) { bn = p[0][k][g]; best = g; } p[1][k] = best; }
+        });
+      }
+    } else avisos.push('Não achei a aba COLABORADORES SENIOR; multas sem condutor usam só o gestor encontrado no ATIVOS.');
+
+    var vistos = {}, dup = [], semData = 0, out = [];
+    bd.forEach(function (r) {
+      var ait = String(pick(r, 'AIT')).trim();
+      if (vistos[ait]) { dup.push(ait); return; } vistos[ait] = 1;
+      var nome = pick(r, 'Nome condutor'); nome = nome === null || nome === undefined ? '' : String(nome).replace(/\s+/g, ' ').trim();
+      if (/MULTA/i.test(nome)) nome = '';
+      var m = nome ? find(nome) : null, ger = null, origem;
+      if (m && m.ger) { ger = m.ger; origem = m.tipo === 'exato' ? 'Nome do condutor (exato)' : 'Nome do condutor (aproximado)'; }
+      else {
+        var gk = norm(pick(r, 'Gestão Aprovação (GERENCIA)')), sk = norm(pick(r, 'Gestão Aprovação (SUPERVISÃO)'));
+        var f1 = gk ? find(gk) : null, f2 = sk ? find(sk) : null;
+        ger = (gk && gmap[gk]) || (sk && smap[sk]) || (f1 && f1.ger) || (f2 && f2.ger) || null;
+        origem = ger ? 'Pelo gestor aprovador' : 'Não identificada';
+        if (!ger) ger = 'Não identificada';
+      }
+      var dt = toDate(pick(r, 'Data Rec Notificação'));
+      if (!dt) semData++;
+      var desc = String(pick(r, 'Descrição da Infração') || '').replace(/\s+/g, ' ').trim();
+      var infr = String(pick(r, 'Infrator') || '').trim();
+      var t = tipo(desc);
+      var avaliada = t && norm(infr) === 'CONDUTOR' ? t : 'Não avaliada';
+      out.push({
+        'Gerência': ger, 'Nome': nome ? nome.toUpperCase() : 'CONDUTOR NÃO IDENTIFICADO',
+        'Mês': dt ? new Date(dt.getFullYear(), dt.getMonth(), 1) : null,
+        'Tipo de Infração': avaliada, 'Data Rec Notificação': dt, 'Descrição da Infração': desc,
+        'Infrator': infr ? infr.charAt(0).toUpperCase() + infr.slice(1).toLowerCase() : '',
+        'Gravidade': pick(r, 'Gravidade') || '', 'Unidade': pick(r, 'Unidade') || '', 'AIT': ait,
+        'Origem da Gerência': origem, 'Nome no ATIVOS': m ? m.nome : ''
+      });
+    });
+    out.sort(function (a, b) {
+      var x = (a['Data Rec Notificação'] || 0) - (b['Data Rec Notificação'] || 0);
+      return x || a['Gerência'].localeCompare(b['Gerência']) || a['Nome'].localeCompare(b['Nome']);
+    });
+    if (dup.length) avisos.push(dup.length + ' AIT lançado mais de uma vez (ficou só o primeiro): ' + dup.join(', ') + '.');
+    if (semData) avisos.push(semData + ' multa(s) sem Data Rec Notificação ficaram sem mês.');
+
+    // Gerências da lista (ATIVOS + base)
+    var gs = {}; ativos.forEach(function (a) { var g = pick(a, 'GERENCIA'); if (g) gs[String(g).trim()] = 1; });
+    out.forEach(function (o) { gs[o['Gerência']] = 1; });
+    return { linhas: out, gerencias: Object.keys(gs).sort(function (a, b) { return a.localeCompare(b); }), avisos: avisos, abaBD: bdName, totalLinhasBD: bd.length };
+  }
+
+  function indicador(res) {
+    var meses = {}; res.linhas.forEach(function (l) { if (l['Mês']) meses[+l['Mês']] = l['Mês']; });
+    var lista = Object.keys(meses).map(Number).sort(function (a, b) { return a - b; });
+    if (!lista.length) return [];
+    var ini = new Date(meses[lista[0]]), fim = meses[lista[lista.length - 1]], ms = [];
+    for (var d = new Date(ini.getFullYear(), 0, 1); d <= fim; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) if (d >= new Date(ini.getFullYear(), 0, 1)) ms.push(d);
+    var cnt = {}; res.linhas.forEach(function (l) { if (l['Tipo de Infração'] !== 'Não avaliada' && l['Mês']) { var k = l['Gerência'] + '|' + (+l['Mês']); cnt[k] = (cnt[k] || 0) + 1; } });
+    var rows = [];
+    ms.forEach(function (m) { res.gerencias.forEach(function (g) { rows.push({ 'Gerência': g, 'Mês': m, 'Indicador': 'Nº de Multas de Trânsito', 'Previsto': 0, 'Realizado': cnt[g + '|' + (+m)] || 0 }); }); });
+    return rows;
+  }
+
+  function gerarXlsx(XLSX, res) {
+    var cols = ['Gerência', 'Nome', 'Mês', 'Tipo de Infração', 'Data Rec Notificação', 'Descrição da Infração', 'Infrator', 'Gravidade', 'Unidade', 'AIT', 'Origem da Gerência', 'Nome no ATIVOS'];
+    var wb = XLSX.utils.book_new();
+    var ws = XLSX.utils.json_to_sheet(res.linhas, { header: cols, cellDates: true });
+    var rng = XLSX.utils.decode_range(ws['!ref']);
+    for (var R = 1; R <= rng.e.r; R++) {
+      [[2, 'mmm/yyyy'], [4, 'dd/mm/yyyy']].forEach(function (p) { var c = ws[XLSX.utils.encode_cell({ r: R, c: p[0] })]; if (c && c.t === 'd') c.z = p[1]; });
+    }
+    ws['!cols'] = [34, 36, 11, 32, 13, 60, 12, 13, 9, 13, 28, 36].map(function (w) { return { wch: w }; });
+    ws['!autofilter'] = { ref: ws['!ref'] };
+    XLSX.utils.book_append_sheet(wb, ws, 'Base Multas');
+    var ind = indicador(res);
+    var wi = XLSX.utils.json_to_sheet(ind, { header: ['Gerência', 'Mês', 'Indicador', 'Previsto', 'Realizado'], cellDates: true });
+    if (ind.length) { var ri = XLSX.utils.decode_range(wi['!ref']); for (var R2 = 1; R2 <= ri.e.r; R2++) { var c2 = wi[XLSX.utils.encode_cell({ r: R2, c: 1 })]; if (c2) c2.z = 'mmm/yyyy'; } }
+    wi['!cols'] = [44, 12, 28, 10, 10].map(function (w) { return { wch: w }; });
+    wi['!autofilter'] = { ref: wi['!ref'] };
+    XLSX.utils.book_append_sheet(wb, wi, 'Indicador IP');
+    return XLSX.write(wb, { bookType: 'xlsx', type: 'array', cellDates: true });
+  }
+
+  return { processar: processar, indicador: indicador, gerarXlsx: gerarXlsx, AVAL: AVAL };
+})();
+if (typeof module !== 'undefined') module.exports = MultasLogic;
+</script><script>
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  var wbs={multas:null,ativos:null}, res=null, xbuf=null;
+  var COLS=['Gerência','Nome','Mês','Tipo de Infração','Data Rec Notificação','Descrição da Infração','Infrator','Unidade','AIT','Origem da Gerência','Nome no ATIVOS'];
+  function fmtM(d){return d?d.toLocaleDateString('pt-BR',{month:'short',year:'numeric'}).replace(' de ','/').replace('.',''):''}
+  function fmtD(d){return d?d.toLocaleDateString('pt-BR'):''}
+  function setStatus(t,err){var s=$('status');s.textContent=t;s.className='status'+(err?' err':'')}
+  function ready(){$('btnGerar').disabled=!(wbs.multas&&wbs.ativos)}
+  function bind(kind,inputId,dropId,nameId){
+    var inp=$(inputId),drop=$(dropId);
+    function load(file){
+      if(!file)return;
+      $(nameId).textContent='Lendo '+file.name+'…'; drop.classList.remove('ok'); wbs[kind]=null; ready();
+      var fr=new FileReader();
+      fr.onload=function(){
+        try{ wbs[kind]=XLSX.read(new Uint8Array(fr.result),{type:'array'}); $(nameId).textContent=file.name; drop.classList.add('ok'); setStatus(wbs.multas&&wbs.ativos?'Pronto para gerar.':'Falta o outro arquivo.'); }
+        catch(e){ $(nameId).textContent='Não consegui abrir '+file.name+'. Envie um arquivo .xlsx.'; setStatus('Arquivo inválido.',true); }
+        ready();
+      };
+      fr.readAsArrayBuffer(file);
+    }
+    inp.addEventListener('change',function(){load(inp.files[0])});
+    ['dragenter','dragover'].forEach(function(ev){drop.addEventListener(ev,function(e){e.preventDefault();drop.classList.add('over')})});
+    ['dragleave','drop'].forEach(function(ev){drop.addEventListener(ev,function(e){e.preventDefault();drop.classList.remove('over')})});
+    drop.addEventListener('drop',function(e){if(e.dataTransfer.files[0])load(e.dataTransfer.files[0])});
+  }
+  bind('multas','fileMultas','dropMultas','nameMultas');
+  bind('ativos','fileAtivos','dropAtivos','nameAtivos');
+
+  $('btnGerar').addEventListener('click',function(){
+    setStatus('Cruzando as planilhas…'); $('btnGerar').disabled=true;
+    setTimeout(function(){
+      try{
+        res=MultasLogic.processar(XLSX,wbs.multas,wbs.ativos);
+        xbuf=MultasLogic.gerarXlsx(XLSX,res);
+        render(); setStatus('Base gerada com '+res.linhas.length+' multas.');
+        $('btnBaixar').hidden=false;
+      }catch(e){ setStatus(e.message||'Não foi possível processar os arquivos.',true); }
+      ready();
+    },30);
+  });
+
+  $('btnBaixar').addEventListener('click',function(){
+    if(!xbuf)return;
+    var hoje=new Date(), nome='Base_Multas_IP_'+hoje.getFullYear()+String(hoje.getMonth()+1).padStart(2,'0')+String(hoje.getDate()).padStart(2,'0')+'.xlsx';
+    var blob=new Blob([xbuf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    var url=URL.createObjectURL(blob), a=document.createElement('a');
+    a.href=url; a.download=nome; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){URL.revokeObjectURL(url)},2000);
+    setStatus('Arquivo '+nome+' baixado.');
+  });
+
+  function render(){
+    var L=res.linhas, av=L.filter(function(l){return l['Tipo de Infração']!=='Não avaliada'});
+    var cont={}; av.forEach(function(l){cont[l['Tipo de Infração']]=(cont[l['Tipo de Infração']]||0)+1});
+    var org={}; L.forEach(function(l){org[l['Origem da Gerência']]=(org[l['Origem da Gerência']]||0)+1});
+    var ger={}; av.forEach(function(l){ger[l['Gerência']]=1});
+    $('kpis').innerHTML='';
+    [[av.length,'multas contam no IP',1],[L.length,'multas na base'],[Object.keys(ger).length,'gerências com multa no IP'],[(org['Nome do condutor (aproximado)']||0),'nomes por aproximação (conferir)']].forEach(function(k){
+      var d=document.createElement('div');d.className='kpi'+(k[2]?' main':'');d.innerHTML='<b></b><span></span>';d.children[0].textContent=k[0].toLocaleString('pt-BR');d.children[1].textContent=k[1];$('kpis').appendChild(d);
+    });
+    $('chips').innerHTML='';
+    MultasLogic.AVAL.forEach(function(t){var c=document.createElement('span');c.className='chip'+(cont[t]?' on':'');c.innerHTML='<span></span><b></b>';c.children[0].textContent=t;c.children[1].textContent=cont[t]||0;$('chips').appendChild(c)});
+    var notes=res.avisos.slice();
+    notes.unshift('Gerência: '+(org['Nome do condutor (exato)']||0)+' pelo nome exato, '+(org['Nome do condutor (aproximado)']||0)+' por nome parecido, '+(org['Pelo gestor aprovador']||0)+' pelo gestor aprovador, '+(org['Não identificada']||0)+' sem gerência.');
+    $('notes').innerHTML=''; notes.forEach(function(n){var li=document.createElement('li');li.textContent=n;$('notes').appendChild(li)});
+    $('thead').innerHTML=''; COLS.forEach(function(c){var th=document.createElement('th');th.textContent=c;$('thead').appendChild(th)});
+    $('resultado').hidden=false; tabela();
+  }
+  function tabela(){
+    if(!res)return;
+    var q=$('busca').value.trim().toUpperCase(), so=$('soAval').checked;
+    var rows=res.linhas.filter(function(l){
+      if(so&&l['Tipo de Infração']==='Não avaliada')return false;
+      if(!q)return true;
+      return (l['Nome']+' '+l['Gerência']+' '+l['AIT']).toUpperCase().indexOf(q)>=0;
+    });
+    var tb=$('tbody'); tb.innerHTML='';
+    var frag=document.createDocumentFragment();
+    rows.slice(0,300).forEach(function(l){
+      var tr=document.createElement('tr');
+      COLS.forEach(function(c){
+        var td=document.createElement('td'), v=l[c];
+        if(c==='Mês')v=fmtM(v); else if(c==='Data Rec Notificação')v=fmtD(v);
+        if(c==='Tipo de Infração'){var s=document.createElement('span');s.className='tag '+(v==='Não avaliada'?'na':'av');s.textContent=v;td.appendChild(s)}
+        else if(c==='Origem da Gerência'&&v!=='Nome do condutor (exato)'){var s2=document.createElement('span');s2.className='tag ap';s2.textContent=v;td.appendChild(s2)}
+        else td.textContent=v==null?'':v;
+        if(c==='Descrição da Infração')td.className='desc';
+        if(c==='AIT'||c==='Mês'||c==='Data Rec Notificação')td.className='d';
+        tr.appendChild(td);
+      });
+      frag.appendChild(tr);
+    });
+    tb.appendChild(frag);
+    $('rodape').textContent=rows.length>300?'Mostrando 300 de '+rows.length+' linhas. O arquivo baixado tem todas.':rows.length+' linha(s).';
+  }
+  $('busca').addEventListener('input',tabela);
+  $('soAval').addEventListener('change',tabela);
+})();
+</script></body></html>
