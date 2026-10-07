@@ -94,7 +94,7 @@ td.desc{white-space:normal;min-width:260px;max-width:420px}
     <label class="drop" id="dropAtivos">
       <input type="file" id="fileAtivos" accept=".xlsx,.xlsm,.xls">
       <span class="t">2. ATIVOS</span>
-      <span class="s">Colunas NOME, MATRICULA e GERENCIA</span>
+      <span class="s">Colunas NOME, MATRICULA, GERENCIA e CARGO</span>
       <span class="f" id="nameAtivos">Clique ou arraste o arquivo aqui</span>
     </label>
   </section>
@@ -125,7 +125,8 @@ td.desc{white-space:normal;min-width:260px;max-width:420px}
       <div><dt>Mês</dt><dd>Mês da Data Rec Notificação.</dd></div>
       <div><dt>Tipo de Infração</dt><dd>Excesso de Velocidade, Uso de Celular, Ultrapassagem Proibida, Sem Cinto de Segurança ou Faróis Apagados em Pista Simples. O resto fica "Não avaliada".</dd></div>
       <div><dt>Responsabilidade</dt><dd>Só conta multa com Infrator = Condutor. Infração do proprietário (ex.: lâmpada queimada) não entra.</dd></div>
-      <div><dt>IP</dt><dd>SIM quando a infração é uma das cinco acima e de responsabilidade do condutor; NÃO para as demais.</dd></div>
+      <div><dt>Gerente/supervisor</dt><dd>Multa com condutor que tem cargo de gerente ou supervisor no ATIVOS (carro da função) não conta no IP.</dd></div>
+      <div><dt>IP</dt><dd>SIM quando a infração é uma das cinco acima, de responsabilidade do condutor e o condutor não é gerente/supervisor; NÃO para as demais, com o motivo na coluna "Motivo fora do IP".</dd></div>
       <div><dt>Duplicados</dt><dd>AIT repetido conta uma vez só.</dd></div>
     </dl>
     <p class="rule">Os arquivos são lidos só no seu navegador; nada é enviado para fora.</p>
@@ -199,9 +200,13 @@ var MultasLogic = (function () {
     if (hA < 0) throw new Error('Na planilha de ATIVOS não encontrei as colunas NOME e GERENCIA. Confira se é o arquivo certo.');
     var ativos = toObjects(rA, hA);
     var byName = {}, byMat = {};
+    var CARGO_COLS = ['CARGO', 'DESC CARGO', 'DESCRICAO CARGO', 'TITULO CARGO', 'NOME CARGO', 'FUNCAO'];
+    var temCargo = ativos.length && CARGO_COLS.some(function (c) { return pick(ativos[0], c) !== undefined; });
+    if (!temCargo) avisos.push('A planilha ATIVOS não tem a coluna CARGO: a regra de gerente/supervisor não foi aplicada.');
+    function cargoDe(a) { for (var i = 0; i < CARGO_COLS.length; i++) { var v = pick(a, CARGO_COLS[i]); if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim(); } return ''; }
     ativos.forEach(function (a) {
       var k = norm(pick(a, 'NOME')); var g = pick(a, 'GERENCIA'); g = g ? String(g).trim() : '';
-      if (k && !(k in byName)) byName[k] = { nome: String(pick(a, 'NOME')).trim(), ger: g };
+      if (k && !(k in byName)) byName[k] = { nome: String(pick(a, 'NOME')).trim(), ger: g, cargo: cargoDe(a) };
       var mt = pick(a, 'MATRICULA'); if (mt !== null && mt !== undefined) byMat[String(mt).trim()] = g;
     });
     var keys = Object.keys(byName);
@@ -223,7 +228,7 @@ var MultasLogic = (function () {
           if (best >= 0.9) res = { k: bk, tipo: 'aprox' };
         }
       }
-      if (res) { res.ger = byName[res.k].ger; res.nome = byName[res.k].nome; }
+      if (res) { res.ger = byName[res.k].ger; res.nome = byName[res.k].nome; res.cargo = byName[res.k].cargo; }
       cache[k] = res; return res;
     }
 
@@ -282,10 +287,15 @@ var MultasLogic = (function () {
       var infr = String(pick(r, 'Infrator') || '').trim();
       var t = tipo(desc);
       var avaliada = t && norm(infr) === 'CONDUTOR' ? t : 'Não avaliada';
+      // Carro de gerente/supervisor: condutor com cargo de gerente ou supervisor no ATIVOS
+      var cargo = m && m.cargo ? m.cargo : '';
+      var gestor = /\b(GERENTE|SUPERVISOR|SUPERVISORA)\b/.test(norm(cargo));
+      var ip = avaliada !== 'Não avaliada' && !gestor ? 'SIM' : 'NÃO';
+      var motivo = ip === 'SIM' ? '' : (avaliada === 'Não avaliada' ? (t ? 'Infrator não é o condutor' : 'Infração não avaliada') : 'Veículo de gerente/supervisor');
       out.push({
         'Gerência': ger, 'Nome': nome ? nome.toUpperCase() : 'CONDUTOR NÃO IDENTIFICADO',
         'Mês': dt ? new Date(dt.getFullYear(), dt.getMonth(), 1) : null,
-        'Tipo de Infração': avaliada, 'IP': avaliada === 'Não avaliada' ? 'NÃO' : 'SIM', 'Data Rec Notificação': dt, 'Descrição da Infração': desc,
+        'Tipo de Infração': avaliada, 'IP': ip, 'Motivo fora do IP': motivo, 'Cargo': cargo, 'Data Rec Notificação': dt, 'Descrição da Infração': desc,
         'Infrator': infr ? infr.charAt(0).toUpperCase() + infr.slice(1).toLowerCase() : '',
         'Gravidade': pick(r, 'Gravidade') || '', 'Unidade': pick(r, 'Unidade') || '', 'AIT': ait,
         'Origem da Gerência': origem, 'Nome no ATIVOS': m ? m.nome : ''
@@ -310,21 +320,21 @@ var MultasLogic = (function () {
     if (!lista.length) return [];
     var ini = new Date(meses[lista[0]]), fim = meses[lista[lista.length - 1]], ms = [];
     for (var d = new Date(ini.getFullYear(), 0, 1); d <= fim; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) if (d >= new Date(ini.getFullYear(), 0, 1)) ms.push(d);
-    var cnt = {}; res.linhas.forEach(function (l) { if (l['Tipo de Infração'] !== 'Não avaliada' && l['Mês']) { var k = l['Gerência'] + '|' + (+l['Mês']); cnt[k] = (cnt[k] || 0) + 1; } });
+    var cnt = {}; res.linhas.forEach(function (l) { if (l['IP'] === 'SIM' && l['Mês']) { var k = l['Gerência'] + '|' + (+l['Mês']); cnt[k] = (cnt[k] || 0) + 1; } });
     var rows = [];
     ms.forEach(function (m) { res.gerencias.forEach(function (g) { rows.push({ 'Gerência': g, 'Mês': m, 'Indicador': 'Nº de Multas de Trânsito', 'Previsto': 0, 'Realizado': cnt[g + '|' + (+m)] || 0 }); }); });
     return rows;
   }
 
   function gerarXlsx(XLSX, res) {
-    var cols = ['Gerência', 'Nome', 'Mês', 'Tipo de Infração', 'IP', 'Data Rec Notificação', 'Descrição da Infração', 'Infrator', 'Gravidade', 'Unidade', 'AIT', 'Origem da Gerência', 'Nome no ATIVOS'];
+    var cols = ['Gerência', 'Nome', 'Mês', 'Tipo de Infração', 'IP', 'Motivo fora do IP', 'Cargo', 'Data Rec Notificação', 'Descrição da Infração', 'Infrator', 'Gravidade', 'Unidade', 'AIT', 'Origem da Gerência', 'Nome no ATIVOS'];
     var wb = XLSX.utils.book_new();
     var ws = XLSX.utils.json_to_sheet(res.linhas, { header: cols, cellDates: true });
     var rng = XLSX.utils.decode_range(ws['!ref']);
     for (var R = 1; R <= rng.e.r; R++) {
-      [[2, 'mmm/yyyy'], [5, 'dd/mm/yyyy']].forEach(function (p) { var c = ws[XLSX.utils.encode_cell({ r: R, c: p[0] })]; if (c && c.t === 'd') c.z = p[1]; });
+      [[2, 'mmm/yyyy'], [7, 'dd/mm/yyyy']].forEach(function (p) { var c = ws[XLSX.utils.encode_cell({ r: R, c: p[0] })]; if (c && c.t === 'd') c.z = p[1]; });
     }
-    ws['!cols'] = [34, 36, 11, 32, 6, 13, 60, 12, 13, 9, 13, 28, 36].map(function (w) { return { wch: w }; });
+    ws['!cols'] = [34, 36, 11, 32, 6, 28, 30, 13, 60, 12, 13, 9, 13, 28, 36].map(function (w) { return { wch: w }; });
     ws['!autofilter'] = { ref: ws['!ref'] };
     XLSX.utils.book_append_sheet(wb, ws, 'Base Multas');
     return XLSX.write(wb, { bookType: 'xlsx', type: 'array', cellDates: true });
@@ -337,7 +347,7 @@ if (typeof module !== 'undefined') module.exports = MultasLogic;
 (function(){
   var $=function(id){return document.getElementById(id)};
   var wbs={multas:null,ativos:null}, res=null, xbuf=null;
-  var COLS=['Gerência','Nome','Mês','Tipo de Infração','IP','Data Rec Notificação','Descrição da Infração','Infrator','Unidade','AIT','Origem da Gerência','Nome no ATIVOS'];
+  var COLS=['Gerência','Nome','Cargo','Mês','Tipo de Infração','IP','Motivo fora do IP','Data Rec Notificação','Descrição da Infração','Infrator','Unidade','AIT','Origem da Gerência','Nome no ATIVOS'];
   function fmtM(d){return d?d.toLocaleDateString('pt-BR',{month:'short',year:'numeric'}).replace(' de ','/').replace('.',''):''}
   function fmtD(d){return d?d.toLocaleDateString('pt-BR'):''}
   function setStatus(t,err){var s=$('status');s.textContent=t;s.className='status'+(err?' err':'')}
@@ -387,12 +397,13 @@ if (typeof module !== 'undefined') module.exports = MultasLogic;
   });
 
   function render(){
-    var L=res.linhas, av=L.filter(function(l){return l['Tipo de Infração']!=='Não avaliada'});
+    var L=res.linhas, av=L.filter(function(l){return l['IP']==='SIM'});
+    var gestores=L.filter(function(l){return l['Motivo fora do IP']==='Veículo de gerente/supervisor'}).length;
     var cont={}; av.forEach(function(l){cont[l['Tipo de Infração']]=(cont[l['Tipo de Infração']]||0)+1});
     var org={}; L.forEach(function(l){org[l['Origem da Gerência']]=(org[l['Origem da Gerência']]||0)+1});
     var ger={}; av.forEach(function(l){ger[l['Gerência']]=1});
     $('kpis').innerHTML='';
-    [[av.length,'multas com IP = SIM',1],[L.length,'multas na base'],[Object.keys(ger).length,'gerências com multa no IP'],[(org['Nome do condutor (aproximado)']||0),'nomes por aproximação (conferir)']].forEach(function(k){
+    [[av.length,'multas com IP = SIM',1],[L.length,'multas na base'],[Object.keys(ger).length,'gerências com multa no IP'],[gestores,'de gerente/supervisor (fora do IP)'],[(org['Nome do condutor (aproximado)']||0),'nomes por aproximação (conferir)']].forEach(function(k){
       var d=document.createElement('div');d.className='kpi'+(k[2]?' main':'');d.innerHTML='<b></b><span></span>';d.children[0].textContent=k[0].toLocaleString('pt-BR');d.children[1].textContent=k[1];$('kpis').appendChild(d);
     });
     $('chips').innerHTML='';
@@ -407,7 +418,7 @@ if (typeof module !== 'undefined') module.exports = MultasLogic;
     if(!res)return;
     var q=$('busca').value.trim().toUpperCase(), so=$('soAval').checked;
     var rows=res.linhas.filter(function(l){
-      if(so&&l['Tipo de Infração']==='Não avaliada')return false;
+      if(so&&l['IP']!=='SIM')return false;
       if(!q)return true;
       return (l['Nome']+' '+l['Gerência']+' '+l['AIT']).toUpperCase().indexOf(q)>=0;
     });
@@ -420,6 +431,7 @@ if (typeof module !== 'undefined') module.exports = MultasLogic;
         if(c==='Mês')v=fmtM(v); else if(c==='Data Rec Notificação')v=fmtD(v);
         if(c==='Tipo de Infração'){var s=document.createElement('span');s.className='tag '+(v==='Não avaliada'?'na':'av');s.textContent=v;td.appendChild(s)}
         else if(c==='IP'){var s3=document.createElement('span');s3.className='tag '+(v==='SIM'?'av':'na');s3.textContent=v;td.appendChild(s3)}
+        else if(c==='Motivo fora do IP'&&v){var s4=document.createElement('span');s4.className='tag na';s4.textContent=v;td.appendChild(s4)}
         else if(c==='Origem da Gerência'&&v!=='Nome do condutor (exato)'){var s2=document.createElement('span');s2.className='tag ap';s2.textContent=v;td.appendChild(s2)}
         else td.textContent=v==null?'':v;
         if(c==='Descrição da Infração')td.className='desc';
